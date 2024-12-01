@@ -140,7 +140,7 @@ async def fetch_author_details(
 
 
 async def scrape_page_data(
-    session: aiohttp.ClientSession, page_url: str
+    session: aiohttp.ClientSession, page_url: str, fetched_authors: set
 ) -> tuple[list[dict], list[dict]]:
     """
     Scrape the quotes and author details from a single page.
@@ -149,6 +149,9 @@ async def scrape_page_data(
     :type session: aiohttp.ClientSession
     :param page_url: The full URL of the page to scrape
     :type page_url: str
+    :param fetched_authors: A set containing URLs of authors whose details
+                            have already been fetched
+    :type fetched_authors: set
 
     :return: A tuple containing a list of quotes and a list of authors' details
     :rtype: tuple[list[dict], list[dict]]
@@ -168,12 +171,16 @@ async def scrape_page_data(
             # Collect unique author URLs from quotes
             authors_urls = {
                 quote['author_url'] for quote in quotes if quote['author_url']
+                and quote['author_url'] not in fetched_authors
             }
 
             # Fetch author details asynchronously for each unique URL
             authors_details = await asyncio.gather(
                 *[fetch_author_details(session, url) for url in authors_urls]
             )
+
+            # Add the new authors to the fetched_authors set
+            fetched_authors.update(authors_urls)
 
             return quotes, authors_details
 
@@ -210,6 +217,7 @@ async def scrape_all_data() -> tuple[list[dict], list[dict]]:
 
     all_quotes = []
     all_authors_details = []
+    fetched_authors = set()
     current_url = BASE_URL
 
     async with aiohttp.ClientSession() as session:
@@ -217,7 +225,7 @@ async def scrape_all_data() -> tuple[list[dict], list[dict]]:
             while current_url:
                 # Scrape data from the current page
                 quotes, authors_details = await scrape_page_data(
-                    session, current_url
+                    session, current_url, fetched_authors
                 )
                 all_quotes.extend(quotes)
                 all_authors_details.extend(authors_details)
