@@ -105,7 +105,7 @@ async def fetch_author_details(
                 extract_text(soup.find('span', class_='author-born-date'))
             )
 
-            # Extract the author's birth location
+            # Extract the author's birth place
             birth_place = extract_text(
                 soup.find('span', class_='author-born-location'),
                 'Unknown Location'
