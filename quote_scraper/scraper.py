@@ -2,7 +2,9 @@ import logging
 import aiohttp
 import asyncio
 from bs4 import BeautifulSoup
-from utils import extract_text, parse_date, safe_get
+from utils import (
+    extract_text, parse_date, extract_url, get_next_page_url
+)
 from logger import setup_logger
 
 # Set up the logger for this module
@@ -43,9 +45,11 @@ def fetch_quotes(soup: BeautifulSoup) -> list[dict]:
             )
 
             # Extract the author's URL
-            author_url = safe_get(quote.find('a'), 'href')
-            if author_url:
-                author_url = BASE_URL + author_url
+            author_link_tag = quote.find('a')
+            if author_link_tag:
+                author_url = extract_url(
+                    author_link_tag, 'href', base_url=BASE_URL
+                )
 
             # Extract the tags (if any)
             tags = [
@@ -102,7 +106,9 @@ async def fetch_author_details(
 
             # Extract the author's birth date
             birth_date = parse_date(
-                extract_text(soup.find('span', class_='author-born-date'))
+                extract_text(
+                    soup.find('span', class_='author-born-date')
+                )
             )
 
             # Extract the author's birth place
@@ -182,6 +188,11 @@ async def scrape_page_data(
             # Add the new authors to the fetched_authors set
             fetched_authors.update(authors_urls)
 
+            scraping_logger.info(
+                f"Finished scraping quotes and author details from the page "
+                f"{page_url}"
+            )
+
             return quotes, authors_details
 
     except aiohttp.ClientError as e:
@@ -230,24 +241,11 @@ async def scrape_all_data() -> tuple[list[dict], list[dict]]:
                 all_quotes.extend(quotes)
                 all_authors_details.extend(authors_details)
 
-                # Fetch the HTML content of the current page
-                # to locate the next page
-                async with session.get(current_url) as response:
-                    response.raise_for_status()
-                    soup = BeautifulSoup(await response.text(), 'lxml')
-
-                    # Find the next page URL
-                    next_page = soup.find('li', class_='next')
-                    if next_page and next_page.find('a', href=True):
-                        next_url = next_page.find('a', href=True)['href']
-
-                        # If the next page URL is relative, add the base URL
-                        current_url = (
-                            next_url if next_url.startswith('http')
-                            else BASE_URL + next_url
-                        )
-                    else:
-                        current_url = None
+                # Fetch the next page URL
+                next_url = await get_next_page_url(
+                    session, current_url, BASE_URL, ['li.next a'], 'href'
+                )
+                current_url = next_url
 
         except aiohttp.ClientError as e:
             # Log network-related errors
